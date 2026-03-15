@@ -1,19 +1,21 @@
 const _this = this
 
+export interface EsOptions {
+  whitelist?: string[]
+  thisArg?: unknown
+  context?: Record<string, unknown>
+}
+
 /**
- * Evaluates `str` in `context`.
- * Be aware that properties not provided in context will be looked up
- * in global space!
- * @param {String} str
- * @param {Record<string,any>} context Options
+ * Evaluates `str`.
  */
-export function es(str: string, context?: Record<string, unknown>) {
-  context ??= {}
+export function es(str: string, options?: EsOptions) {
+  const whitelist = options?.whitelist ?? []
+  const context = options?.context ?? {}
+  let thisArg = options?.thisArg
+  if (thisArg === null || typeof thisArg === 'undefined') thisArg = {}
 
-  const whitelist: string[] = []
-
-  /** @type {string[]} */
-  const bodyLines = []
+  const bodyLines: string[] = []
 
   // Use strict to prevent auto-assigning undeclared variables in global scope.
   // (Also forbids to use 'arguments' and 'eval' as identifier)
@@ -88,7 +90,7 @@ export function es(str: string, context?: Record<string, unknown>) {
   //... and call it to evaluate, given all context values
   try {
     console.log(func.toString())
-    return func.call('hello', ...Object.values(context))
+    return func.call(thisArg, ...Object.values(context))
   } catch (error) {
     console.error(error)
     if (error instanceof Error) {
@@ -112,7 +114,7 @@ export function es(str: string, context?: Record<string, unknown>) {
         const lineNo = parseInt(source[1]) - userLineOffset
         const charNo = parseInt(source[2])
         console.log(lineNo, charNo, str)
-        const newError = new error.constructor.prototype(error.message)
+        const newError = new (error.constructor as typeof Error)(error.message)
         newError.name = error.name
         newError.stack = `${lineNo}:${charNo}`
         throw newError
