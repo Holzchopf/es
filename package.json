@@ -1,0 +1,31 @@
+{
+  "name": "es",
+  "version": "1.0.0",
+  "description": "ECMAScript eval, execute ECMAScript string",
+  "main": "lib/cjs/index.cjs",
+  "module": "lib/esm/index.mjs",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.mts",
+      "import": "./lib/esm/index.mjs",
+      "require": "./lib/cjs/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "rm -r -f ./lib/** && node esbuild.mjs && tsc && npm pack",
+    "test": "vitest"
+  },
+  "keywords": [
+    "eval",
+    "javascript",
+    "ecmascript"
+  ],
+  "author": "Olivier Stuker <oli4stuker@hotmail.com> (https://www.holzchopf.ch/)",
+  "license": "ISC",
+  "devDependencies": {
+    "@biomejs/biome": "2.4.6",
+    "esbuild": "^0.27.4",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  }
+}
