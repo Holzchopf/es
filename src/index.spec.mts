@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
-import { es } from './index.mjs'
+import { ES, es } from './index.mjs'
 
-describe('plain, directly evaluated ECMAScript', () => {
+describe('Simple expressions using built-in features only', () => {
   test('primitives are returned as-is', () => {
     expect(es('null')).toBe(null)
     expect(es('undefined')).toBe(undefined)
@@ -11,12 +11,34 @@ describe('plain, directly evaluated ECMAScript', () => {
     expect(es('[]')).toEqual([])
     expect(es('{}')).toEqual({})
   })
+  test('arithmetics return value', () => {
+    expect(es('1+1')).toBe(2)
+  })
+  test('operators return value', () => {
+    expect(es('typeof null')).toBe('object')
+  })
 })
 
 describe('Whitelisting', () => {
   test('Standard APIs are not available unless whitelisted', () => {
     expect(() => es('JSON.stringify(null)')).toThrow(TypeError)
     expect(es('JSON.stringify(null)', { whitelist: ['JSON'] })).toBe('null')
+  })
+})
+
+describe('Custom APIs', () => {
+  test('Custom APIs can be provided', () => {
+    const myAPI = { trigger: () => 42 }
+    expect(es('myAPI.trigger()', { customAPIs: { myAPI } })).toBe(42)
+  })
+  test('Custom APIs override whitelisted APIs', () => {
+    const myJSON = { stringify: (_arg: unknown) => 42 }
+    expect(
+      es('JSON.stringify(2)', {
+        whitelist: ['JSON'],
+        customAPIs: { JSON: myJSON },
+      }),
+    ).toBe(42)
   })
 })
 
@@ -30,5 +52,47 @@ describe('Function binding', () => {
     expect(es('this', { thisArg: undefined })).toEqual({})
     expect(es('this', { thisArg: [][1] })).toEqual({}) // no tricks possible?
     expect(es('this', { thisArg: false })).toEqual(new Boolean(false)) // no fallbacks on nullish
+  })
+})
+
+describe('Prepared es', () => {
+  test('prepared es returns same value as directly invoked es', () => {
+    const str = '1337 + 1'
+    const prepared = new ES(str)
+    expect(prepared.execute()).toBe(es(str))
+  })
+  test('prepared es can be invoked with new argValues', () => {
+    const prepared = new ES('`hello ${who}${punctuation}`', {
+      args: { who: 'world', punctuation: '!' },
+    })
+    // fall-back to defaults
+    expect(prepared.execute()).toBe('hello world!')
+    // override
+    expect(prepared.execute({ args: { who: 'updog' } })).toBe('hello updog!')
+    expect(prepared.execute({ argValues: ['cat'] })).toBe('hello cat!')
+    // no fall-back to defaults where value explicitly set to undefined
+    expect(prepared.execute({ args: { who: undefined } })).toBe(
+      'hello undefined!',
+    )
+    expect(prepared.execute({ argValues: [undefined] })).toBe(
+      'hello undefined!',
+    )
+    // named arguments don't mess up order
+    expect(
+      prepared.execute({ argNames: ['punctuation'], argValues: ['...'] }),
+    ).toBe('hello world...')
+    // fall-back again to check nothing was overwritten in prepared object
+    expect(prepared.execute()).toBe('hello world!')
+  })
+  test('prepared es can be invoked with new thisArg', () => {
+    const prepared = new ES('this', {
+      thisArg: { a: 1 },
+    })
+    // fall-back to defaults
+    expect(prepared.execute()).toEqual({ a: 1 })
+    // override
+    expect(prepared.execute({ thisArg: { b: 7 } })).toEqual({ b: 7 })
+    // fall-back again to check nothing was overwritten in prepared object
+    expect(prepared.execute()).toEqual({ a: 1 })
   })
 })
