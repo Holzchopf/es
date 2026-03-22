@@ -31,6 +31,7 @@ export type EsOptions = {
  */
 export class ES {
   public userLineOffset = 0
+  private readonly str: string
   private readonly whitelist: string[]
   private readonly customAPIs: Record<string, unknown>
   private readonly thisArg: unknown
@@ -45,6 +46,7 @@ export class ES {
    * @param {EsOptions} options `EsOptions` to set whitelist, customAPIs and argNames as well as fall-back values for `thisArg` and `argValues`
    */
   constructor(str: string, options?: EsOptions) {
+    this.str = str
     this.whitelist = options?.whitelist ?? []
     this.customAPIs = options?.customAPIs ?? {}
     this.thisArg = options?.thisArg
@@ -107,7 +109,7 @@ export class ES {
       bodyLines.push(`const ${esExecuteParamName}=undefined;`)
     }
     bodyLines.push('return(')
-    this.userLineOffset = 1 + bodyLines.length
+    this.userLineOffset = bodyLines.length + 2
     bodyLines.push(str)
     bodyLines.push(')')
     bodyLines.push(`}).apply(this, ${esExecuteParamName}.argValues)`)
@@ -123,14 +125,7 @@ export class ES {
           body,
         ) as (options?: EsOptions) => unknown //.bind("hello", { inject: {eval: () => {console.log('inner eval called')}}, context })
       } catch (error) {
-        console.error(error)
-        if (error instanceof Error) {
-          console.error(error.cause)
-          console.dir(error)
-          // TODO: do something with body to find syntax error maybe? or unsafe?
-          throw new SyntaxError(error.message)
-        }
-        throw error
+        throw this.esifyError(error)
       }
     })()
 
@@ -167,14 +162,58 @@ export class ES {
       (name, i) => (name in args ? args[name] : this.argValues[i]),
     )
 
-    return this.func.call(
-      thisArg,
-      {
-        argNames: this.argNames,
-        argValues,
-      },
-      ...Object.values(this.customAPIs),
-    )
+    try {
+      return this.func.call(
+        thisArg,
+        {
+          argNames: this.argNames,
+          argValues,
+        },
+        ...Object.values(this.customAPIs),
+      )
+    } catch (error) {
+      // console.log(this.func.toString())
+      throw this.esifyError(error)
+    }
+  }
+
+  private guessErrorSourceInUserSpaceFromStackTrace(
+    error: Error,
+  ): [number, number] | undefined {
+    if (!error.stack) return undefined
+    // Assume first line containing pattern `:<number>:<number>` is relevant
+    // trace line with the last occurrence of pattern being in user input.
+    const relevantMatch = error.stack.match(/:(\d+):(\d+).?$/m)
+    if (!relevantMatch) return undefined
+    return [
+      parseInt(relevantMatch[1]) - this.userLineOffset,
+      parseInt(relevantMatch[2]),
+    ]
+  }
+
+  private esifyError(error: unknown) {
+    if (error instanceof Error) {
+      // SyntaxErrors do not contain error source - for others, try to infer it.
+      const errorSource =
+        error instanceof SyntaxError
+          ? ''
+          : (() => {
+              const source =
+                this.guessErrorSourceInUserSpaceFromStackTrace(error)
+              return source ? `:${source[0]}:${source[1]}` : ''
+            })()
+      // For reporting, report a bit of lib code as well since some errors
+      // may only occur after user code.
+      const newError = new (error.constructor as typeof Error)(error.message)
+      newError.cause = error
+      newError.stack = [
+        `${newError.name}: ${newError.message}`,
+        `    in <user input>${errorSource}: ${JSON.stringify(this.str)}`,
+        `    in <library code>: ${JSON.stringify(`(() => {return(${this.str})()`)}`,
+      ].join('\n')
+      return newError
+    }
+    return error
   }
 }
 
@@ -188,36 +227,37 @@ export function es(str: string, options?: EsOptions) {
   const preparedEs = new ES(str, options)
 
   //... and call it to evaluate, given all context values
-  try {
-    return preparedEs.execute(options)
-  } catch (error) {
-    console.error(error)
-    if (error instanceof Error) {
-      console.dir(error.stack)
-      const sourceLines = error.stack?.split('\n').map((line) => line.trim())
-      // Stack is not standardized. Assume first line containing lineNo:charNo is culprit
-      const userSourceLine = sourceLines?.find((line) =>
-        line.match(/(\d+):(\d+)/),
-      )
-      console.log(userSourceLine)
-      if (userSourceLine) {
-        // TODO: only correct line numbering if not already happened
+  return preparedEs.execute(options)
+  // try {
 
-        // Assume the last occurrence of lineNo:charNo is the error source.
-        // Can't be nullish since userSourceLine must contain pattern to reach this code.
-        /** @type {RegExpExecArray} */
-        // biome-ignore lint: code would be unreachable if pattern was missing
-        const source = Array.from(userSourceLine.matchAll(/(\d+):(\d+)/g)).at(
-          -1,
-        )!
-        const lineNo = parseInt(source[1]) - preparedEs.userLineOffset
-        const charNo = parseInt(source[2])
-        console.log(lineNo, charNo, str)
-        const newError = new (error.constructor as typeof Error)(error.message)
-        newError.name = error.name
-        newError.stack = `${lineNo}:${charNo}`
-        throw newError
-      }
-    }
-  }
+  // } catch (error) {
+  //   console.error(error)
+  //   if (error instanceof Error) {
+  //     console.dir(error.stack)
+  //     const sourceLines = error.stack?.split('\n').map((line) => line.trim())
+  //     // Stack is not standardized. Assume first line containing lineNo:charNo is culprit
+  //     const userSourceLine = sourceLines?.find((line) =>
+  //       line.match(/(\d+):(\d+)/),
+  //     )
+  //     console.log(userSourceLine)
+  //     if (userSourceLine) {
+  //       // TODO: only correct line numbering if not already happened
+
+  //       // Assume the last occurrence of lineNo:charNo is the error source.
+  //       // Can't be nullish since userSourceLine must contain pattern to reach this code.
+  //       /** @type {RegExpExecArray} */
+  //       // biome-ignore lint: code would be unreachable if pattern was missing
+  //       const source = Array.from(userSourceLine.matchAll(/(\d+):(\d+)/g)).at(
+  //         -1,
+  //       )!
+  //       const lineNo = parseInt(source[1]) - preparedEs.userLineOffset
+  //       const charNo = parseInt(source[2])
+  //       console.log(lineNo, charNo, str)
+  //       const newError = new (error.constructor as typeof Error)(error.message)
+  //       newError.name = error.name
+  //       newError.stack = `${lineNo}:${charNo}`
+  //       throw newError
+  //     }
+  //   }
+  // }
 }

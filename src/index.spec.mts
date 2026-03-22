@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { ES, es } from './index.mjs'
+import { ES, es, STANDARD_ECMASCRIPT } from './index.mjs'
 
 describe('Simple expressions using built-in features only', () => {
   test('primitives are returned as-is', () => {
@@ -23,6 +23,9 @@ describe('Whitelisting', () => {
   test('Standard APIs are not available unless whitelisted', () => {
     expect(() => es('JSON.stringify(null)')).toThrow(TypeError)
     expect(es('JSON.stringify(null)', { whitelist: ['JSON'] })).toBe('null')
+    expect(es('JSON.stringify(null)', { whitelist: STANDARD_ECMASCRIPT })).toBe(
+      'null',
+    )
   })
 })
 
@@ -94,5 +97,67 @@ describe('Prepared es', () => {
     expect(prepared.execute({ thisArg: { b: 7 } })).toEqual({ b: 7 })
     // fall-back again to check nothing was overwritten in prepared object
     expect(prepared.execute()).toEqual({ a: 1 })
+  })
+})
+
+describe('Error reporting', () => {
+  test('SyntaxError', () => {
+    const error = (() => {
+      try {
+        es('3 * (1 - 0')
+      } catch (error) {
+        return error
+      }
+    })() as Error | undefined
+    expect(error).toBeInstanceOf(SyntaxError)
+    expect(error?.message).toBe("Unexpected token '}'")
+    expect(error?.stack?.split('\n')[1]).toMatch(/<user input>: "3 \* \(1 - 0"/)
+  })
+  test('ReferenceError', () => {
+    const error = (() => {
+      try {
+        es('2 + a')
+      } catch (error) {
+        return error
+      }
+    })() as Error | undefined
+    expect(error).toBeInstanceOf(ReferenceError)
+    expect(error?.message).toBe('a is not defined')
+    expect(error?.stack?.split('\n')[1]).toMatch(/<user input>:1:5: /)
+  })
+  test('ReferenceError in multi-line IIFE', () => {
+    const error = (() => {
+      try {
+        es(`
+(() => {
+  2 + a
+})()
+`)
+      } catch (error) {
+        return error
+      }
+    })() as Error | undefined
+    expect(error).toBeInstanceOf(ReferenceError)
+    expect(error?.message).toBe('a is not defined')
+    expect(error?.stack?.split('\n')[1]).toMatch(/<user input>:3:7: /)
+  })
+  test('TypeError in multi-line IIFE', () => {
+    const error = (() => {
+      try {
+        es(`
+(() => {
+  const a = undefined
+  2 + a.property
+})()
+`)
+      } catch (error) {
+        return error
+      }
+    })() as Error | undefined
+    expect(error).toBeInstanceOf(TypeError)
+    expect(error?.message).toBe(
+      "Cannot read properties of undefined (reading 'property')",
+    )
+    expect(error?.stack?.split('\n')[1]).toMatch(/<user input>:4:9: /)
   })
 })
