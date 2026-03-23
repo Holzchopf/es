@@ -1,10 +1,5 @@
 const _this = this
 
-// At runtime, the execution parameters are passed as object with this name.
-// Name collisions should not matter, since the param object is obfuscated for
-// the user code scope.
-const esExecuteParamName = 'esExecuteParam'
-
 export type EsOptionsArguments =
   | {
       args?: Record<string, unknown>
@@ -63,18 +58,22 @@ export class ES {
     const autoWhiteList = [...this.argNames]
     autoWhiteList.push(...Object.keys(this.customAPIs))
 
+    // Randomize esExecuteParamName to prevent name collisions (with `argNames`
+    // and `customAPIs`)
+    const esExecuteParamName = (() => {
+      let name: string
+      do {
+        name = `esExParam_${(Math.random() * 99999).toFixed(0)}`
+      } while (autoWhiteList.includes(name))
+      return name
+    })()
+
     // Wrap in IIFE and apply `this` to pass later passed `this` arg.
     // Fence the user string and put it on new line to reset char position for
     // error reporting.
 
     bodyLines.push(`return (function (${this.argNames.join(',')}) {`)
-    // Instead of trying to obfuscate the identifier for the options argument,
-    // simply prepare for the case there is an actual name collision in context.
-    // (I.e. only set to `undefined` if there's no name collision and otherwise
-    // let it be as the argument will have precedence (closer scope))
-    if (!Object.keys(this.argNames).includes(esExecuteParamName)) {
-      bodyLines.push(`const ${esExecuteParamName}=undefined;`)
-    }
+    bodyLines.push(`const ${esExecuteParamName}=undefined;`)
     bodyLines.push('return(')
     // + 1 for the function header the `Function` constructor prepends
     // + 1 because it's 1-based
