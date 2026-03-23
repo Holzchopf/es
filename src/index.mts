@@ -1,4 +1,4 @@
-const _this = this
+export class EsError extends Error {}
 
 export type EsOptionsArguments =
   | {
@@ -39,17 +39,28 @@ export class ES {
    * @param {EsOptions} options `EsOptions` to set customAPIs and argNames as well as fall-back values for `thisArg` and `argValues`
    */
   constructor(str: string, options?: EsOptions) {
+    if (typeof str !== 'string') {
+      throw new TypeError('Invalid argument type (str must be string)')
+    }
+
     this.str = str
     this.customAPIs = options?.customAPIs ?? {}
     this.thisArg = options?.thisArg
     this.argNames = options?.argNames ?? Object.keys(options?.args ?? {})
     this.argValues = options?.argValues ?? Object.values(options?.args ?? {})
 
-    const bodyLines: string[] = []
+    // Per default, use plain `es` for `eval`
+    if (!Object.keys(this.customAPIs).includes('eval')) {
+      this.customAPIs['eval'] = (str: string) =>
+        es(str, {
+          customAPIs: this.customAPIs,
+          thisArg: this.thisArg,
+          argNames: this.argNames,
+          argValues: this.argValues,
+        })
+    }
 
-    // `"use strict"` to prevent accidentally auto-assigning undeclared
-    // variables in global scope.
-    bodyLines.push('"use strict";')
+    const bodyLines: string[] = []
 
     // Set undefined to computed undefined value, it's [[writable]] prior to
     // ECMAScript edition 5 and not a reserved keyword (could be anything).
@@ -71,9 +82,12 @@ export class ES {
     // Wrap in IIFE and apply `this` to pass later passed `this` arg.
     // Fence the user string and put it on new line to reset char position for
     // error reporting.
+    // `"use strict"` to prevent accidentally auto-assigning undeclared
+    // variables in global scope.
 
     bodyLines.push(`return (function (${this.argNames.join(',')}) {`)
     bodyLines.push(`const ${esExecuteParamName}=undefined;`)
+    bodyLines.push('"use strict";')
     bodyLines.push('return(')
     // + 1 for the function header the `Function` constructor prepends
     // + 1 because it's 1-based
@@ -146,8 +160,11 @@ export class ES {
   }
 
   private guessErrorSourceInUserSpaceFromStackTrace(
-    error: Error,
+    error: unknown,
   ): [number, number] | undefined {
+    if (!(error instanceof Error)) return undefined
+    // SyntaxErrors do not contain error source - for others, try to infer it.
+    if (error instanceof SyntaxError) return undefined
     if (!error.stack) return undefined
     // Assume first line containing pattern `:<number>:<number>` is relevant
     // trace line with the last occurrence of pattern being in user input.
@@ -160,33 +177,22 @@ export class ES {
   }
 
   private esifyError(error: unknown) {
-    if (
-      error instanceof SyntaxError ||
-      error instanceof TypeError ||
-      error instanceof ReferenceError ||
-      error instanceof RangeError
-    ) {
-      // SyntaxErrors do not contain error source - for others, try to infer it.
-      const errorSource =
-        error instanceof SyntaxError
-          ? ''
-          : (() => {
-              const source =
-                this.guessErrorSourceInUserSpaceFromStackTrace(error)
-              return source ? `:${source[0]}:${source[1]}` : ''
-            })()
-      // For reporting, report a bit of lib code as well since some errors
-      // may only occur after user code.
-      const newError = new (error.constructor as typeof Error)(error.message)
-      newError.cause = error
-      newError.stack = [
-        `${newError.name}: ${newError.message}`,
-        `    in <user input>${errorSource}: ${JSON.stringify(this.str)}`,
-        `    in <library code>: ${JSON.stringify(`(() => {return(${this.str})()`)}`,
-      ].join('\n')
-      return newError
-    }
-    return error
+    const errorMessage =
+      error instanceof Error ? error.message : 'Unknown error'
+    const errorSource = (() => {
+      const source = this.guessErrorSourceInUserSpaceFromStackTrace(error)
+      return source ? `:${source[0]}:${source[1]}` : ''
+    })()
+    // For reporting, report a bit of lib code as well since some errors
+    // may only occur after user code.
+    const newError = new EsError(errorMessage)
+    newError.cause = error
+    newError.stack = [
+      `${newError.name}: ${newError.message}`,
+      `    in <user input>${errorSource}: ${JSON.stringify(this.str)}`,
+      `    in <library code>: ${JSON.stringify(`(() => {return(${this.str})()`)}`,
+    ].join('\n')
+    return newError
   }
 }
 

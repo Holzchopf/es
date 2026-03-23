@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'vitest'
-import { ES, es } from './index.mjs'
+import { describe, expect, test, vitest } from 'vitest'
+import { ES, EsError, es } from './index.mjs'
 
 describe('Simple expressions using built-in features only', () => {
   test('primitives are returned as-is', () => {
@@ -46,7 +46,7 @@ describe('Function binding', () => {
     expect(es('this', { thisArg: null })).toEqual({})
     expect(es('this', { thisArg: undefined })).toEqual({})
     expect(es('this', { thisArg: [][1] })).toEqual({}) // no tricks possible?
-    expect(es('this', { thisArg: false })).toEqual(false) // no fallbacks on nullish
+    expect(es('this', { thisArg: false })).toEqual(new Boolean(false)) // no fallbacks on nullish
   })
 })
 
@@ -93,6 +93,18 @@ describe('Prepared es', () => {
 })
 
 describe('Error reporting', () => {
+  test('TypeError', () => {
+    const error = (() => {
+      try {
+        // @ts-expect-error
+        es(null)
+      } catch (error) {
+        return error
+      }
+    })() as Error | undefined
+    expect(error).toBeInstanceOf(TypeError)
+    expect(error?.message).toBe('Invalid argument type (str must be string)')
+  })
   test('SyntaxError', () => {
     const error = (() => {
       try {
@@ -101,7 +113,7 @@ describe('Error reporting', () => {
         return error
       }
     })() as Error | undefined
-    expect(error).toBeInstanceOf(SyntaxError)
+    expect(error).toBeInstanceOf(EsError)
     expect(error?.message).toBe("Unexpected token '}'")
     expect(error?.stack?.split('\n')[1]).toMatch(/<user input>: "3 \* \(1 - 0"/)
   })
@@ -113,7 +125,7 @@ describe('Error reporting', () => {
         return error
       }
     })() as Error | undefined
-    expect(error).toBeInstanceOf(ReferenceError)
+    expect(error).toBeInstanceOf(EsError)
     expect(error?.message).toBe('a is not defined')
     expect(error?.stack?.split('\n')[1]).toMatch(/<user input>:1:5: /)
   })
@@ -125,7 +137,7 @@ describe('Error reporting', () => {
         return error
       }
     })() as Error | undefined
-    expect(error).toBeInstanceOf(RangeError)
+    expect(error).toBeInstanceOf(EsError)
     expect(error?.message).toBe('Invalid array length')
     expect(error?.stack?.split('\n')[1]).toMatch(/<user input>:1:1: /)
   })
@@ -141,7 +153,7 @@ describe('Error reporting', () => {
         return error
       }
     })() as Error | undefined
-    expect(error).toBeInstanceOf(ReferenceError)
+    expect(error).toBeInstanceOf(EsError)
     expect(error?.message).toBe('a is not defined')
     expect(error?.stack?.split('\n')[1]).toMatch(/<user input>:3:7: /)
   })
@@ -158,7 +170,7 @@ describe('Error reporting', () => {
         return error
       }
     })() as Error | undefined
-    expect(error).toBeInstanceOf(TypeError)
+    expect(error).toBeInstanceOf(EsError)
     expect(error?.message).toBe(
       "Cannot read properties of undefined (reading 'property')",
     )
@@ -167,9 +179,15 @@ describe('Error reporting', () => {
 
   test('User-defined thrown objects are passed through', () => {
     const myError = { message: 'hello' }
-    expect(() =>
-      es('(() => {throw myError})()', { customAPIs: { myError } }),
-    ).toThrow(myError)
+    const error = (() => {
+      try {
+        es('(() => {throw myError})()', { customAPIs: { myError } })
+      } catch (error) {
+        return error
+      }
+    })() as Error | undefined
+    expect(error).toBeInstanceOf(EsError)
+    expect(error?.cause).toBe(myError)
   })
   test('User-defined thrown errors are passed through', () => {
     const error = (() => {
@@ -179,8 +197,9 @@ describe('Error reporting', () => {
         return error
       }
     })() as Error | undefined
-    expect(error).toBeInstanceOf(Error)
-    expect(error?.message).toBe('hello')
+    expect(error).toBeInstanceOf(EsError)
+    expect(error?.cause).toBeInstanceOf(Error)
+    expect((error?.cause as Error).message).toBe('hello')
   })
   test('User-defined errors do not interfere with es error handling', () => {
     const error = (() => {
@@ -192,8 +211,9 @@ describe('Error reporting', () => {
         return error
       }
     })() as Error | undefined
-    expect(error).toBeInstanceOf(Error)
-    expect(error?.message).toBe('hello')
+    expect(error).toBeInstanceOf(EsError)
+    expect(error?.cause).toBeInstanceOf(Error)
+    expect((error?.cause as Error).message).toBe('hello')
   })
   test('User-defined errors do not interfere with es error handling Ⅱ', () => {
     const error = (() => {
@@ -205,8 +225,50 @@ describe('Error reporting', () => {
         return error
       }
     })() as Error | undefined
-    expect(error).toBeInstanceOf(Error)
-    expect(error?.message).toBe('hello')
+    expect(error).toBeInstanceOf(EsError)
+    expect(error?.cause).toBeInstanceOf(Error)
+    expect((error?.cause as Error).message).toBe('hello')
+  })
+})
+
+describe('Nesting', () => {
+  describe('`eval` is `es` per default', () => {
+    test('nested `es` is invoked', () => {
+      // built-in eval allows other-than-string inputs, `es` will throw
+      expect(() => es('eval(null)')).toThrow(EsError)
+    })
+    test('nested `es` is executed', () => {
+      expect(es('eval("1 + 2")')).toBe(3)
+    })
+    test('nested `es` has outer `es` context', () => {
+      expect(es('eval("a")', { args: { a: 42 } })).toBe(42)
+    })
+  })
+  describe('`eval` can be customized', () => {
+    test('nested `eval` can be anything', () => {
+      expect(es('eval("hello")', { customAPIs: { eval: () => 50 } })).toBe(50)
+    })
+    test('nested `es` can have different defaults', () => {
+      expect(
+        es('a + eval("a")', {
+          customAPIs: { eval: (str: string) => es(str, { args: { a: 42 } }) },
+          args: { a: 'the answer is: ' },
+        }),
+      ).toBe('the answer is: 42')
+    })
+  })
+
+  test('Errors in nested `es` are propagated correctly', () => {
+    const error = (() => {
+      try {
+        es('eval("2 + a")')
+      } catch (error) {
+        return error
+      }
+    })() as Error | undefined
+    expect(error).toBeInstanceOf(EsError)
+    expect(error?.message).toBe('a is not defined')
+    expect(error?.stack?.split('\n')[1]).toMatch(/<user input>: /)
   })
 })
 
@@ -226,7 +288,7 @@ describe('Reasons why not to run user input', () => {
     // Create an IIFE with a body that creates and calls a new `Function` where
     // global a will be set.
     es('(() => {(new ("".toString.constructor)("a=67"))()})()')
-    // `a` *should* not be defined, but it was set at run-time by above code.
+    // @ts-expect-error `a` was set at run-time by above code.
     expect(a).toBe(67)
   })
   test('access non-whitelisted APIs', () => {
