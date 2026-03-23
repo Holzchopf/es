@@ -1,4 +1,4 @@
-import { describe, expect, test, vitest } from 'vitest'
+import { describe, expect, test } from 'vitest'
 import { ES, EsError, es } from './index.mjs'
 
 describe('Simple expressions using built-in features only', () => {
@@ -60,12 +60,12 @@ describe('Prepared es', () => {
     const prepared = new ES('`hello ${who}${punctuation}`', {
       args: { who: 'world', punctuation: '!' },
     })
-    // fall-back to defaults
+    // fall back to defaults
     expect(prepared.execute()).toBe('hello world!')
     // override
     expect(prepared.execute({ args: { who: 'updog' } })).toBe('hello updog!')
     expect(prepared.execute({ argValues: ['cat'] })).toBe('hello cat!')
-    // no fall-back to defaults where value explicitly set to undefined
+    // do not fall back to defaults where value explicitly set to undefined
     expect(prepared.execute({ args: { who: undefined } })).toBe(
       'hello undefined!',
     )
@@ -76,18 +76,18 @@ describe('Prepared es', () => {
     expect(
       prepared.execute({ argNames: ['punctuation'], argValues: ['...'] }),
     ).toBe('hello world...')
-    // fall-back again to check nothing was overwritten in prepared object
+    // fall back again to check nothing was overwritten in prepared object
     expect(prepared.execute()).toBe('hello world!')
   })
   test('prepared es can be invoked with new thisArg', () => {
     const prepared = new ES('this', {
       thisArg: { a: 1 },
     })
-    // fall-back to defaults
+    // fall back to defaults
     expect(prepared.execute()).toEqual({ a: 1 })
     // override
     expect(prepared.execute({ thisArg: { b: 7 } })).toEqual({ b: 7 })
-    // fall-back again to check nothing was overwritten in prepared object
+    // fall back again to check nothing was overwritten in prepared object
     expect(prepared.execute()).toEqual({ a: 1 })
   })
 })

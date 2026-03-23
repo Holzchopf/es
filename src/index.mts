@@ -1,22 +1,52 @@
+/**
+ * Thrown by `es` when an error occurs in the user code.
+ */
 export class EsError extends Error {}
 
+/**
+ * Options to set arguments as record or as two separate arrays for names and
+ * values.
+ */
 export type EsOptionsArguments =
   | {
+      /**
+       * Arguments as record with its keys being the argument names and their
+       * respective values.
+       */
       args?: Record<string, unknown>
       argNames?: undefined
       argValues?: undefined
     }
   | {
       args?: undefined
+      /**
+       * Array of argument names.
+       */
       argNames?: string[]
+      /**
+       * Array of argument values.
+       */
       argValues?: unknown[]
     }
 
+/**
+ * Options to set the `this` argument and {@link EsOptionsArguments}.
+ */
 export type EsExecuteOptions = {
+  /**
+   * Value bound to `this` in evaluated string.
+   */
   thisArg?: unknown
 } & EsOptionsArguments
 
+/**
+ * Options to set `customAPIs` and {@link EsExecuteOptions}.
+ */
 export type EsOptions = {
+  /**
+   * Record of custom APIs (global objects) that are available within evaluated
+   * string without being arguments.
+   */
   customAPIs?: Record<string, unknown>
 } & EsExecuteOptions
 
@@ -24,7 +54,7 @@ export type EsOptions = {
  * Prepared `es` function.
  */
 export class ES {
-  public userLineOffset = 0
+  private userLineOffset = 0
   private readonly str: string
   private readonly customAPIs: Record<string, unknown>
   private readonly thisArg: unknown
@@ -36,7 +66,8 @@ export class ES {
   /**
    * Prepares `es` function for given string and options.
    * @param {string} str string to evaluate
-   * @param {EsOptions} options `EsOptions` to set customAPIs and argNames as well as fall-back values for `thisArg` and `argValues`
+   * @param {EsOptions} options `EsOptions` to set `customAPIs` and `argNames`
+   * as well as fallback values for `thisArg` and `argValues`
    */
   constructor(str: string, options?: EsOptions) {
     if (typeof str !== 'string') {
@@ -49,7 +80,7 @@ export class ES {
     this.argNames = options?.argNames ?? Object.keys(options?.args ?? {})
     this.argValues = options?.argValues ?? Object.values(options?.args ?? {})
 
-    // Per default, use plain `es` for `eval`
+    // Per default, use this `es` for `eval`
     if (!Object.keys(this.customAPIs).includes('eval')) {
       this.customAPIs['eval'] = (str: string) =>
         es(str, {
@@ -116,8 +147,9 @@ export class ES {
 
   /**
    * Executes prepared `es` function with specified options.
-   * @param {EsExecuteOptions} options Overrides for `thisArg` and argument values
-   * @returns
+   * @param {EsExecuteOptions} options overrides for `thisArg` and argument
+   * values
+   * @returns {unknown} result from evaluation
    */
   execute(options?: EsExecuteOptions) {
     // The passed `thisArg` when calling func must not be nullish, otherwise
@@ -140,7 +172,7 @@ export class ES {
       )
     const argValues = this.argNames.map(
       // If name was explicitly stated in `options.argNames` and its value is
-      // undefined, use undefined instead of fall-back value.
+      // undefined, use undefined instead of fallback value.
       (name, i) => (name in args ? args[name] : this.argValues[i]),
     )
 
@@ -207,36 +239,4 @@ export function es(str: string, options?: EsOptions) {
 
   //... and call it to evaluate, given all context values
   return preparedEs.execute(options)
-  // try {
-
-  // } catch (error) {
-  //   console.error(error)
-  //   if (error instanceof Error) {
-  //     console.dir(error.stack)
-  //     const sourceLines = error.stack?.split('\n').map((line) => line.trim())
-  //     // Stack is not standardized. Assume first line containing lineNo:charNo is culprit
-  //     const userSourceLine = sourceLines?.find((line) =>
-  //       line.match(/(\d+):(\d+)/),
-  //     )
-  //     console.log(userSourceLine)
-  //     if (userSourceLine) {
-  //       // TODO: only correct line numbering if not already happened
-
-  //       // Assume the last occurrence of lineNo:charNo is the error source.
-  //       // Can't be nullish since userSourceLine must contain pattern to reach this code.
-  //       /** @type {RegExpExecArray} */
-  //       // biome-ignore lint: code would be unreachable if pattern was missing
-  //       const source = Array.from(userSourceLine.matchAll(/(\d+):(\d+)/g)).at(
-  //         -1,
-  //       )!
-  //       const lineNo = parseInt(source[1]) - preparedEs.userLineOffset
-  //       const charNo = parseInt(source[2])
-  //       console.log(lineNo, charNo, str)
-  //       const newError = new (error.constructor as typeof Error)(error.message)
-  //       newError.name = error.name
-  //       newError.stack = `${lineNo}:${charNo}`
-  //       throw newError
-  //     }
-  //   }
-  // }
 }
