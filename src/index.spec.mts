@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { ES, es, STANDARD_ECMASCRIPT } from './index.mjs'
+import { ES, es } from './index.mjs'
 
 describe('Simple expressions using built-in features only', () => {
   test('primitives are returned as-is', () => {
@@ -19,17 +19,10 @@ describe('Simple expressions using built-in features only', () => {
   })
 })
 
-describe('Whitelisting', () => {
-  test('Standard APIs are not available unless whitelisted', () => {
-    expect(() => es('JSON.stringify(null)')).toThrow(TypeError)
-    expect(es('JSON.stringify(null)', { whitelist: ['JSON'] })).toBe('null')
-    expect(es('JSON.stringify(null)', { whitelist: STANDARD_ECMASCRIPT })).toBe(
-      'null',
-    )
+describe('Standard and custom APIs', () => {
+  test('Standard APIs are always available', () => {
+    expect(es('JSON.stringify(null)')).toBe('null')
   })
-})
-
-describe('Custom APIs', () => {
   test('Custom APIs can be provided', () => {
     const myAPI = { trigger: () => 42 }
     expect(es('myAPI.trigger()', { customAPIs: { myAPI } })).toBe(42)
@@ -38,7 +31,6 @@ describe('Custom APIs', () => {
     const myJSON = { stringify: (_arg: unknown) => 42 }
     expect(
       es('JSON.stringify(2)', {
-        whitelist: ['JSON'],
         customAPIs: { JSON: myJSON },
       }),
     ).toBe(42)
@@ -54,7 +46,7 @@ describe('Function binding', () => {
     expect(es('this', { thisArg: null })).toEqual({})
     expect(es('this', { thisArg: undefined })).toEqual({})
     expect(es('this', { thisArg: [][1] })).toEqual({}) // no tricks possible?
-    expect(es('this', { thisArg: false })).toEqual(new Boolean(false)) // no fallbacks on nullish
+    expect(es('this', { thisArg: false })).toEqual(false) // no fallbacks on nullish
   })
 })
 

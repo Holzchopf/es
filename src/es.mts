@@ -22,7 +22,6 @@ export type EsExecuteOptions = {
 } & EsOptionsArguments
 
 export type EsOptions = {
-  whitelist?: string[]
   customAPIs?: Record<string, unknown>
 } & EsExecuteOptions
 
@@ -32,7 +31,6 @@ export type EsOptions = {
 export class ES {
   public userLineOffset = 0
   private readonly str: string
-  private readonly whitelist: string[]
   private readonly customAPIs: Record<string, unknown>
   private readonly thisArg: unknown
   private readonly argNames: string[]
@@ -43,11 +41,10 @@ export class ES {
   /**
    * Prepares `es` function for given string and options.
    * @param {string} str string to evaluate
-   * @param {EsOptions} options `EsOptions` to set whitelist, customAPIs and argNames as well as fall-back values for `thisArg` and `argValues`
+   * @param {EsOptions} options `EsOptions` to set customAPIs and argNames as well as fall-back values for `thisArg` and `argValues`
    */
   constructor(str: string, options?: EsOptions) {
     this.str = str
-    this.whitelist = options?.whitelist ?? []
     this.customAPIs = options?.customAPIs ?? {}
     this.thisArg = options?.thisArg
     this.argNames = options?.argNames ?? Object.keys(options?.args ?? {})
@@ -55,9 +52,9 @@ export class ES {
 
     const bodyLines: string[] = []
 
-    // Use strict to prevent auto-assigning undeclared variables in global scope.
-    // (Also forbids to use 'arguments' and 'eval' as identifier)
-    // bodyLines.push('"use strict";')
+    // `"use strict"` to prevent accidentally auto-assigning undeclared
+    // variables in global scope.
+    bodyLines.push('"use strict";')
 
     // Set undefined to computed undefined value, it's [[writable]] prior to
     // ECMAScript edition 5 and not a reserved keyword (could be anything).
@@ -66,41 +63,11 @@ export class ES {
     const autoWhiteList = [...this.argNames]
     autoWhiteList.push(...Object.keys(this.customAPIs))
 
-    // Obfuscate all global properties plus constructor.
-    // Exempt 'undefined' as that's already been fixed to something really undefined.
-    const evilKeywords = Object.getOwnPropertyNames(_this)
-      .concat(['constructor'])
-      .filter((k) => !['undefined'].includes(k))
-      .filter((k) => !autoWhiteList.includes(k))
-
-    for (const key of evilKeywords) {
-      if (!this.whitelist.includes(key)) {
-        bodyLines.push(`const ${key}=undefined;`)
-      }
-    }
-    // for (const key of ['globalThis']) {
-    //   body += `${key} = undefined;\n`
-    // }
-
-    // pack string to evaluate in nested IIFE with strict mode (to prevent assignment of globals) and apply undefined to hide "this"
-
-    // User line offset for error reporting
-    // + 1 because there's an extra line for the wrapper IIFE
-    // + 1 because there's an extra line break in the return statement to reset the char position
-    // + 1 because the Function constructor prepends "function anonymous( ... ) {\n"
-    // const userLineOffset = bodyLines.length + 4 // + 1 because there's an extra line break in the return statement to reset char offset, + 1 because the function constructor will prepend the line function
-    // body += 'return (function () {"use strict";return(\n// user code\n'
-    // body += str
-    // body += '\n)}).apply(undefined);'
-
     // Wrap in IIFE and apply `this` to pass later passed `this` arg.
-    // `"use strict"` in IIFE to prevent auto-assigning undeclared variables in
-    // global scope.
     // Fence the user string and put it on new line to reset char position for
     // error reporting.
 
     bodyLines.push(`return (function (${this.argNames.join(',')}) {`)
-    bodyLines.push('"use strict";')
     // Instead of trying to obfuscate the identifier for the options argument,
     // simply prepare for the case there is an actual name collision in context.
     // (I.e. only set to `undefined` if there's no name collision and otherwise
@@ -109,6 +76,8 @@ export class ES {
       bodyLines.push(`const ${esExecuteParamName}=undefined;`)
     }
     bodyLines.push('return(')
+    // + 1 for the function header the `Function` constructor prepends
+    // + 1 because it's 1-based
     this.userLineOffset = bodyLines.length + 2
     bodyLines.push(str)
     bodyLines.push(')')
@@ -123,7 +92,7 @@ export class ES {
           esExecuteParamName,
           ...Object.keys(this.customAPIs),
           body,
-        ) as (options?: EsOptions) => unknown //.bind("hello", { inject: {eval: () => {console.log('inner eval called')}}, context })
+        ) as (options?: EsOptions) => unknown
       } catch (error) {
         throw this.esifyError(error)
       }
