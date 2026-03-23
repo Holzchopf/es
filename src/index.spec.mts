@@ -117,6 +117,18 @@ describe('Error reporting', () => {
     expect(error?.message).toBe('a is not defined')
     expect(error?.stack?.split('\n')[1]).toMatch(/<user input>:1:5: /)
   })
+  test('RangeError', () => {
+    const error = (() => {
+      try {
+        es('new Array(-1)')
+      } catch (error) {
+        return error
+      }
+    })() as Error | undefined
+    expect(error).toBeInstanceOf(RangeError)
+    expect(error?.message).toBe('Invalid array length')
+    expect(error?.stack?.split('\n')[1]).toMatch(/<user input>:1:1: /)
+  })
   test('ReferenceError in multi-line IIFE', () => {
     const error = (() => {
       try {
@@ -151,6 +163,50 @@ describe('Error reporting', () => {
       "Cannot read properties of undefined (reading 'property')",
     )
     expect(error?.stack?.split('\n')[1]).toMatch(/<user input>:4:9: /)
+  })
+
+  test('User-defined thrown objects are passed through', () => {
+    const myError = { message: 'hello' }
+    expect(() =>
+      es('(() => {throw myError})()', { customAPIs: { myError } }),
+    ).toThrow(myError)
+  })
+  test('User-defined thrown errors are passed through', () => {
+    const error = (() => {
+      try {
+        es(`(() => {throw new Error("hello")})()`)
+      } catch (error) {
+        return error
+      }
+    })() as Error | undefined
+    expect(error).toBeInstanceOf(Error)
+    expect(error?.message).toBe('hello')
+  })
+  test('User-defined errors do not interfere with es error handling', () => {
+    const error = (() => {
+      try {
+        es(
+          `(() => {const error = new RangeError("hello"); error.stack=undefined; throw error;})()`,
+        )
+      } catch (error) {
+        return error
+      }
+    })() as Error | undefined
+    expect(error).toBeInstanceOf(Error)
+    expect(error?.message).toBe('hello')
+  })
+  test('User-defined errors do not interfere with es error handling Ⅱ', () => {
+    const error = (() => {
+      try {
+        es(
+          `(() => {const error = new RangeError("hello"); error.stack='empty'; throw error;})()`,
+        )
+      } catch (error) {
+        return error
+      }
+    })() as Error | undefined
+    expect(error).toBeInstanceOf(Error)
+    expect(error?.message).toBe('hello')
   })
 })
 

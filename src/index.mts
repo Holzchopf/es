@@ -161,7 +161,12 @@ export class ES {
   }
 
   private esifyError(error: unknown) {
-    if (error instanceof Error) {
+    if (
+      error instanceof SyntaxError ||
+      error instanceof TypeError ||
+      error instanceof ReferenceError ||
+      error instanceof RangeError
+    ) {
       // SyntaxErrors do not contain error source - for others, try to infer it.
       const errorSource =
         error instanceof SyntaxError
