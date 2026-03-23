@@ -161,3 +161,32 @@ describe('Error reporting', () => {
     expect(error?.stack?.split('\n')[1]).toMatch(/<user input>:4:9: /)
   })
 })
+
+describe('Reasons why not to run user input', () => {
+  // There are tons of ways how to break out of scope, but the one that most
+  // certainly can't be caught or suppressed is the following:
+  // * Access the constructor of a built-in function
+  //   * e.g. the one of String.toString() ("".toString.constructor)
+  //   * You now have access to the `Function` constructor
+  // * Create a new instance of that class
+  //   * The `Function` constructor takes an arbitrary string of ECMAScript as
+  //     its function body.
+  //   * That code will be evaluated in global scope.
+  // * You can now pollute the global scope.
+  // * You now have access to APIs that weren't supposed to be whitelisted.
+  test('global scope pollution', () => {
+    // Create an IIFE with a body that creates and calls a new `Function` where
+    // global a will be set.
+    es('(() => {(new ("".toString.constructor)("a=67"))()})()')
+    // `a` *should* not be defined, but it was set at run-time by above code.
+    expect(a).toBe(67)
+  })
+  test('access non-whitelisted APIs', () => {
+    // JSON.stringify available although JSON is not whitelisted.
+    expect(
+      es(
+        '(() => (new ("".toString.constructor)("return JSON.stringify(67)"))())()',
+      ),
+    ).toBe('67')
+  })
+})
