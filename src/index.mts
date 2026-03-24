@@ -1,3 +1,8 @@
+import { STANDARD_ECMASCRIPT } from './standard-ecmascript.mjs'
+
+// Grab globalThis at start-up to minimize risk of it being something else.
+const _this = this
+
 /**
  * Thrown by `es` when an error occurs in the user code.
  */
@@ -40,9 +45,17 @@ export type EsExecuteOptions = {
 } & EsOptionsArguments
 
 /**
- * Options to set `customAPIs` and {@link EsExecuteOptions}.
+ * Options to define whitelist, `customAPIs` and {@link EsExecuteOptions}.
  */
 export type EsOptions = {
+  /**
+   * Whether to white list standard ECMAScript globals. Defaults to `true`.
+   */
+  whitelistECMAScript?: boolean
+  /**
+   * Array of identifiers that won't be obfuscated to make globals available.
+   */
+  whitelist?: string[]
   /**
    * Record of custom APIs (global objects) that are available within evaluated
    * string without being arguments.
@@ -56,6 +69,7 @@ export type EsOptions = {
 export class ES {
   private userLineOffset = 0
   private readonly str: string
+  private readonly whitelist: string[]
   private readonly customAPIs: Record<string, unknown>
   private readonly thisArg: unknown
   private readonly argNames: string[]
@@ -66,8 +80,9 @@ export class ES {
   /**
    * Prepares `es` function for given string and options.
    * @param {string} str string to evaluate
-   * @param {EsOptions} options `EsOptions` to set `customAPIs` and `argNames`
-   * as well as fallback values for `thisArg` and `argValues`
+   * @param {EsOptions} options {@link EsOptions} to define whitelist,
+   * `customAPIs` and `argNames` as well as fallback values for `thisArg` and
+   * `argValues`
    */
   constructor(str: string, options?: EsOptions) {
     if (typeof str !== 'string') {
@@ -75,6 +90,9 @@ export class ES {
     }
 
     this.str = str
+    this.whitelist = (
+      options?.whitelistECMAScript === false ? [] : STANDARD_ECMASCRIPT
+    ).concat(options?.whitelist ?? [])
     this.customAPIs = options?.customAPIs ?? {}
     this.thisArg = options?.thisArg
     this.argNames = options?.argNames ?? Object.keys(options?.args ?? {})
@@ -99,6 +117,19 @@ export class ES {
 
     const autoWhiteList = [...this.argNames]
     autoWhiteList.push(...Object.keys(this.customAPIs))
+    autoWhiteList.push(...this.whitelist)
+    autoWhiteList.push('undefined') // Already defined.
+
+    // Obfuscate all global names plus `constructor`.
+    const globalNames = Object.getOwnPropertyNames(_this).concat([
+      'constructor',
+    ])
+
+    for (const key of globalNames) {
+      if (!autoWhiteList.includes(key)) {
+        bodyLines.push(`const ${key}=undefined;`)
+      }
+    }
 
     // Randomize esExecuteParamName to prevent name collisions (with `argNames`
     // and `customAPIs`)
@@ -147,8 +178,8 @@ export class ES {
 
   /**
    * Executes prepared `es` function with specified options.
-   * @param {EsExecuteOptions} options overrides for `thisArg` and argument
-   * values
+   * @param {EsExecuteOptions} options {@link EsExecuteOptions} with overrides
+   * for `thisArg` and argument values
    * @returns {unknown} result from evaluation
    */
   execute(options?: EsExecuteOptions) {
@@ -231,7 +262,7 @@ export class ES {
 /**
  * Evaluate string.
  * @param {string} str string to evaluate
- * @param {EsOptions} options `EsOptions` object
+ * @param {EsOptions} options {@link EsOptions} object
  * @returns {unknown} result from evaluation
  */
 export function es(str: string, options?: EsOptions) {

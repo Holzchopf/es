@@ -1,6 +1,15 @@
 import { describe, expect, test } from 'vitest'
 import { ES, EsError, es } from './index.mjs'
 
+// declare a user global for API test
+declare global {
+  var myGlobalAPI: { toString: () => string }
+}
+
+globalThis.myGlobalAPI = {
+  toString: () => 'hello',
+}
+
 describe('Simple expressions using built-in features only', () => {
   test('primitives are returned as-is', () => {
     expect(es('null')).toBe(null)
@@ -19,21 +28,40 @@ describe('Simple expressions using built-in features only', () => {
   })
 })
 
-describe('Standard and custom APIs', () => {
-  test('Standard APIs are always available', () => {
-    expect(es('JSON.stringify(null)')).toBe('null')
+describe('API customization', () => {
+  describe('Standard ECMAScript', () => {
+    const testStr = 'JSON.stringify(null)'
+    test('ECMAScript globals are available per default', () => {
+      expect(es(testStr)).toBe('null')
+    })
+    test('ECMAScript globals can be suppressed', () => {
+      expect(() => es(testStr, { whitelistECMAScript: false })).toThrow()
+    })
   })
-  test('Custom APIs can be provided', () => {
-    const myAPI = { trigger: () => 42 }
-    expect(es('myAPI.trigger()', { customAPIs: { myAPI } })).toBe(42)
+  describe('User defined whitelist', () => {
+    const testStr = 'myGlobalAPI.toString()'
+    test('User globals are not available per default', () => {
+      expect(() => es(testStr)).toThrow()
+    })
+    test('User globals can be white listed', () => {
+      expect(es(testStr, { whitelist: ['myGlobalAPI'] })).toBe(
+        myGlobalAPI.toString(),
+      )
+    })
   })
-  test('Custom APIs override whitelisted APIs', () => {
-    const myJSON = { stringify: (_arg: unknown) => 42 }
-    expect(
-      es('JSON.stringify(2)', {
-        customAPIs: { JSON: myJSON },
-      }),
-    ).toBe(42)
+  describe('Custom APIs', () => {
+    test('Custom APIs can be provided', () => {
+      const myAPI = { trigger: () => 42 }
+      expect(es('myAPI.trigger()', { customAPIs: { myAPI } })).toBe(42)
+    })
+    test('Custom APIs override whitelisted APIs', () => {
+      const myJSON = { stringify: (_arg: unknown) => 42 }
+      expect(
+        es('JSON.stringify(2)', {
+          customAPIs: { JSON: myJSON },
+        }),
+      ).toBe(42)
+    })
   })
 })
 
@@ -57,6 +85,7 @@ describe('Prepared es', () => {
     expect(prepared.execute()).toBe(es(str))
   })
   test('prepared es can be invoked with new argValues', () => {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: template is eval'ed
     const prepared = new ES('`hello ${who}${punctuation}`', {
       args: { who: 'world', punctuation: '!' },
     })
