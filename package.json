@@ -13,8 +13,8 @@
   },
   "scripts": {
     "build": "rm -r -f ./lib/** && node esbuild.mjs && tsc && npm pack",
-    "test": "vitest",
-    "test:coverage": "vitest --run --coverage.enabled"
+    "test": "tsx --test",
+    "test:coverage": "tsx --test --experimental-test-coverage"
   },
   "keywords": [
     "eval",
@@ -25,9 +25,9 @@
   "license": "ISC",
   "devDependencies": {
     "@biomejs/biome": "2.4.6",
-    "@vitest/coverage-v8": "^4.1.0",
+    "@types/node": "^25.5.0",
     "esbuild": "^0.27.4",
-    "typescript": "^5.9.3",
-    "vitest": "^4.1.0"
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   }
 }

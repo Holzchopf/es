@@ -7,7 +7,7 @@ import * as esbuild from 'esbuild'
 
 const entryPoints = []
 for await (const file of glob('./src/**/*.mts')) {
-  if (!file.endsWith('.spec.mts')) entryPoints.push(file)
+  if (!file.endsWith('.test.mts')) entryPoints.push(file)
 }
 
 const shared = {

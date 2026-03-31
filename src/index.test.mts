@@ -1,5 +1,6 @@
-import { describe, expect, test } from 'vitest'
-import { ES, EsError, es } from './index.mjs'
+import assert from 'node:assert'
+import { suite, test } from 'node:test'
+import { ES, EsError, es } from './index.mts'
 
 // declare a user global for API test
 declare global {
@@ -10,79 +11,81 @@ globalThis.myGlobalAPI = {
   toString: () => 'hello',
 }
 
-describe('Simple expressions using built-in features only', () => {
+suite('Simple expressions using built-in features only', () => {
   test('primitives are returned as-is', () => {
-    expect(es('null')).toBe(null)
-    expect(es('undefined')).toBe(undefined)
-    expect(es('1')).toBe(1)
-    expect(es('"hello"')).toBe('hello')
-    expect(es('true')).toBe(true)
-    expect(es('[]')).toEqual([])
-    expect(es('{}')).toEqual({})
+    assert.strictEqual(es('null'), null)
+    assert.strictEqual(es('undefined'), undefined)
+    assert.strictEqual(es('1'), 1)
+    assert.strictEqual(es('"hello"'), 'hello')
+    assert.strictEqual(es('true'), true)
+    assert.deepStrictEqual(es('[]'), [])
+    assert.deepStrictEqual(es('{}'), {})
   })
   test('arithmetics return value', () => {
-    expect(es('1+1')).toBe(2)
+    assert.strictEqual(es('1+1'), 2)
   })
   test('operators return value', () => {
-    expect(es('typeof null')).toBe('object')
+    assert.strictEqual(es('typeof null'), 'object')
   })
 })
 
-describe('API customization', () => {
-  describe('Standard ECMAScript', () => {
+suite('API customization', () => {
+  test('Standard ECMAScript', (t) => {
     const testStr = 'JSON.stringify(null)'
-    test('ECMAScript globals are available per default', () => {
-      expect(es(testStr)).toBe('null')
+    t.test('ECMAScript globals are available per default', () => {
+      assert.strictEqual(es(testStr), 'null')
     })
-    test('ECMAScript globals can be suppressed', () => {
-      expect(() => es(testStr, { whitelistECMAScript: false })).toThrow()
+    t.test('ECMAScript globals can be suppressed', () => {
+      assert.throws(() => es(testStr, { whitelistECMAScript: false }))
     })
   })
-  describe('User defined whitelist', () => {
+  test('User defined whitelist', (t) => {
     const testStr = 'myGlobalAPI.toString()'
-    test('User globals are not available per default', () => {
-      expect(() => es(testStr)).toThrow()
+    t.test('User globals are not available per default', () => {
+      assert.throws(() => es(testStr), EsError)
     })
-    test('User globals can be white listed', () => {
-      expect(es(testStr, { whitelist: ['myGlobalAPI'] })).toBe(
+    t.test('User globals can be white listed', () => {
+      assert.strictEqual(
+        es(testStr, { whitelist: ['myGlobalAPI'] }),
         myGlobalAPI.toString(),
       )
     })
   })
-  describe('Custom APIs', () => {
-    test('Custom APIs can be provided', () => {
+  test('Custom APIs', (t) => {
+    t.test('Custom APIs can be provided', () => {
       const myAPI = { trigger: () => 42 }
-      expect(es('myAPI.trigger()', { customAPIs: { myAPI } })).toBe(42)
+      assert.strictEqual(es('myAPI.trigger()', { customAPIs: { myAPI } }), 42)
     })
-    test('Custom APIs override whitelisted APIs', () => {
+    t.test('Custom APIs override whitelisted APIs', () => {
       const myJSON = { stringify: (_arg: unknown) => 42 }
-      expect(
+      assert.strictEqual(
         es('JSON.stringify(2)', {
           customAPIs: { JSON: myJSON },
         }),
-      ).toBe(42)
+        42,
+      )
     })
   })
 })
 
-describe('Function binding', () => {
+suite('Function binding', () => {
   test('User defined this arg can be passed, defaulting to empty object', () => {
-    expect(es('this')).toEqual({})
-    expect(es('this', { thisArg: { a: 1 } })).toEqual({ a: 1 })
+    assert.deepStrictEqual(es('this'), {})
+    assert.deepStrictEqual(es('this', { thisArg: { a: 1 } }), { a: 1 })
   })
   test("User defined this arg can't be null or undefined", () => {
-    expect(es('this', { thisArg: null })).toEqual({})
-    expect(es('this', { thisArg: undefined })).toEqual({})
-    expect(es('this', { thisArg: [][1] })).toEqual({}) // no tricks possible?
-    expect(es('this', { thisArg: false })).toEqual(new Boolean(false)) // no fallbacks on nullish
+    assert.deepStrictEqual(es('this', { thisArg: null }), {})
+    assert.deepStrictEqual(es('this', { thisArg: undefined }), {})
+    assert.deepStrictEqual(es('this', { thisArg: [][1] }), {}) // no tricks possible?
+    assert.deepStrictEqual(es('this', { thisArg: false }), new Boolean(false)) // no fallbacks on nullish
   })
 })
 
-describe('Prepared es', () => {
+suite('Prepared es', () => {
   test('prepared es returns same value as directly invoked es', () => {
     const str = '1337 + 1'
     const prepared = new ES(str)
-    expect(prepared.execute()).toBe(es(str))
+    assert.strictEqual(prepared.execute(), es(str))
   })
   test('prepared es can be invoked with new argValues', () => {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: template is eval'ed
@@ -90,38 +93,44 @@ describe('Prepared es', () => {
       args: { who: 'world', punctuation: '!' },
     })
     // fall back to defaults
-    expect(prepared.execute()).toBe('hello world!')
+    assert.strictEqual(prepared.execute(), 'hello world!')
     // override
-    expect(prepared.execute({ args: { who: 'updog' } })).toBe('hello updog!')
-    expect(prepared.execute({ argValues: ['cat'] })).toBe('hello cat!')
+    assert.strictEqual(
+      prepared.execute({ args: { who: 'updog' } }),
+      'hello updog!',
+    )
+    assert.strictEqual(prepared.execute({ argValues: ['cat'] }), 'hello cat!')
     // do not fall back to defaults where value explicitly set to undefined
-    expect(prepared.execute({ args: { who: undefined } })).toBe(
+    assert.strictEqual(
+      prepared.execute({ args: { who: undefined } }),
       'hello undefined!',
     )
-    expect(prepared.execute({ argValues: [undefined] })).toBe(
+    assert.strictEqual(
+      prepared.execute({ argValues: [undefined] }),
       'hello undefined!',
     )
     // named arguments don't mess up order
-    expect(
+    assert.strictEqual(
       prepared.execute({ argNames: ['punctuation'], argValues: ['...'] }),
-    ).toBe('hello world...')
+      'hello world...',
+    )
     // fall back again to check nothing was overwritten in prepared object
-    expect(prepared.execute()).toBe('hello world!')
+    assert.strictEqual(prepared.execute(), 'hello world!')
   })
   test('prepared es can be invoked with new thisArg', () => {
     const prepared = new ES('this', {
       thisArg: { a: 1 },
     })
     // fall back to defaults
-    expect(prepared.execute()).toEqual({ a: 1 })
+    assert.deepStrictEqual(prepared.execute(), { a: 1 })
     // override
-    expect(prepared.execute({ thisArg: { b: 7 } })).toEqual({ b: 7 })
+    assert.deepStrictEqual(prepared.execute({ thisArg: { b: 7 } }), { b: 7 })
     // fall back again to check nothing was overwritten in prepared object
-    expect(prepared.execute()).toEqual({ a: 1 })
+    assert.deepStrictEqual(prepared.execute(), { a: 1 })
   })
 })
 
-describe('Error reporting', () => {
+suite('Error reporting', () => {
   test('TypeError', () => {
     const error = (() => {
       try {
@@ -131,8 +140,11 @@ describe('Error reporting', () => {
         return error
       }
     })() as Error | undefined
-    expect(error).toBeInstanceOf(TypeError)
-    expect(error?.message).toBe('Invalid argument type (str must be string)')
+    assert.ok(error instanceof TypeError)
+    assert.strictEqual(
+      error?.message,
+      'Invalid argument type (str must be string)',
+    )
   })
   test('SyntaxError', () => {
     const error = (() => {
@@ -142,9 +154,12 @@ describe('Error reporting', () => {
         return error
       }
     })() as Error | undefined
-    expect(error).toBeInstanceOf(EsError)
-    expect(error?.message).toBe("Unexpected token '}'")
-    expect(error?.stack?.split('\n')[1]).toMatch(/<user input>: "3 \* \(1 - 0"/)
+    assert.ok(error instanceof EsError)
+    assert.strictEqual(error?.message, "Unexpected token '}'")
+    assert.match(
+      error?.stack?.split('\n')[1] ?? '',
+      /<user input>: "3 \* \(1 - 0"/,
+    )
   })
   test('ReferenceError', () => {
     const error = (() => {
@@ -154,9 +169,9 @@ describe('Error reporting', () => {
         return error
       }
     })() as Error | undefined
-    expect(error).toBeInstanceOf(EsError)
-    expect(error?.message).toBe('a is not defined')
-    expect(error?.stack?.split('\n')[1]).toMatch(/<user input>:1:5: /)
+    assert.ok(error instanceof EsError)
+    assert.strictEqual(error?.message, 'a is not defined')
+    assert.match(error?.stack?.split('\n')[1] ?? '', /<user input>:1:5: /)
   })
   test('RangeError', () => {
     const error = (() => {
@@ -166,9 +181,9 @@ describe('Error reporting', () => {
         return error
       }
     })() as Error | undefined
-    expect(error).toBeInstanceOf(EsError)
-    expect(error?.message).toBe('Invalid array length')
-    expect(error?.stack?.split('\n')[1]).toMatch(/<user input>:1:1: /)
+    assert.ok(error instanceof EsError)
+    assert.strictEqual(error?.message, 'Invalid array length')
+    assert.match(error?.stack?.split('\n')[1] ?? '', /<user input>:1:1: /)
   })
   test('ReferenceError in multi-line IIFE', () => {
     const error = (() => {
@@ -182,9 +197,9 @@ describe('Error reporting', () => {
         return error
       }
     })() as Error | undefined
-    expect(error).toBeInstanceOf(EsError)
-    expect(error?.message).toBe('a is not defined')
-    expect(error?.stack?.split('\n')[1]).toMatch(/<user input>:3:7: /)
+    assert.ok(error instanceof EsError)
+    assert.strictEqual(error?.message, 'a is not defined')
+    assert.match(error?.stack?.split('\n')[1] ?? '', /<user input>:3:7: /)
   })
   test('TypeError in multi-line IIFE', () => {
     const error = (() => {
@@ -199,11 +214,12 @@ describe('Error reporting', () => {
         return error
       }
     })() as Error | undefined
-    expect(error).toBeInstanceOf(EsError)
-    expect(error?.message).toBe(
+    assert.ok(error instanceof EsError)
+    assert.strictEqual(
+      error?.message,
       "Cannot read properties of undefined (reading 'property')",
     )
-    expect(error?.stack?.split('\n')[1]).toMatch(/<user input>:4:9: /)
+    assert.match(error?.stack?.split('\n')[1] ?? '', /<user input>:4:9: /)
   })
 
   test('User-defined thrown objects are passed through', () => {
@@ -215,8 +231,8 @@ describe('Error reporting', () => {
         return error
       }
     })() as Error | undefined
-    expect(error).toBeInstanceOf(EsError)
-    expect(error?.cause).toBe(myError)
+    assert.ok(error instanceof EsError)
+    assert.deepStrictEqual(error?.cause, myError)
   })
   test('User-defined thrown errors are passed through', () => {
     const error = (() => {
@@ -226,9 +242,9 @@ describe('Error reporting', () => {
         return error
       }
     })() as Error | undefined
-    expect(error).toBeInstanceOf(EsError)
-    expect(error?.cause).toBeInstanceOf(Error)
-    expect((error?.cause as Error).message).toBe('hello')
+    assert.ok(error instanceof EsError)
+    assert.ok(error?.cause instanceof Error)
+    assert.strictEqual((error?.cause as Error).message, 'hello')
   })
   test('User-defined errors do not interfere with es error handling', () => {
     const error = (() => {
@@ -240,9 +256,9 @@ describe('Error reporting', () => {
         return error
       }
     })() as Error | undefined
-    expect(error).toBeInstanceOf(EsError)
-    expect(error?.cause).toBeInstanceOf(Error)
-    expect((error?.cause as Error).message).toBe('hello')
+    assert.ok(error instanceof EsError)
+    assert.ok(error?.cause instanceof Error)
+    assert.strictEqual((error?.cause as Error).message, 'hello')
   })
   test('User-defined errors do not interfere with es error handling Ⅱ', () => {
     const error = (() => {
@@ -254,36 +270,40 @@ describe('Error reporting', () => {
         return error
       }
     })() as Error | undefined
-    expect(error).toBeInstanceOf(EsError)
-    expect(error?.cause).toBeInstanceOf(Error)
-    expect((error?.cause as Error).message).toBe('hello')
+    assert.ok(error instanceof EsError)
+    assert.ok(error?.cause instanceof Error)
+    assert.strictEqual((error?.cause as Error).message, 'hello')
   })
 })
 
-describe('Nesting', () => {
-  describe('`eval` is `es` per default', () => {
-    test('nested `es` is invoked', () => {
+suite('Nesting', () => {
+  test('`eval` is `es` per default', (t) => {
+    t.test('nested `es` is invoked', () => {
       // built-in eval allows other-than-string inputs, `es` will throw
-      expect(() => es('eval(null)')).toThrow(EsError)
+      assert.throws(() => es('eval(null)'), EsError)
     })
-    test('nested `es` is executed', () => {
-      expect(es('eval("1 + 2")')).toBe(3)
+    t.test('nested `es` is executed', () => {
+      assert.strictEqual(es('eval("1 + 2")'), 3)
     })
-    test('nested `es` has outer `es` context', () => {
-      expect(es('eval("a")', { args: { a: 42 } })).toBe(42)
+    t.test('nested `es` has outer `es` context', () => {
+      assert.strictEqual(es('eval("a")', { args: { a: 42 } }), 42)
     })
   })
-  describe('`eval` can be customized', () => {
-    test('nested `eval` can be anything', () => {
-      expect(es('eval("hello")', { customAPIs: { eval: () => 50 } })).toBe(50)
+  test('`eval` can be customized', (t) => {
+    t.test('nested `eval` can be anything', () => {
+      assert.strictEqual(
+        es('eval("hello")', { customAPIs: { eval: () => 50 } }),
+        50,
+      )
     })
-    test('nested `es` can have different defaults', () => {
-      expect(
+    t.test('nested `es` can have different defaults', () => {
+      assert.strictEqual(
         es('a + eval("a")', {
           customAPIs: { eval: (str: string) => es(str, { args: { a: 42 } }) },
           args: { a: 'the answer is: ' },
         }),
-      ).toBe('the answer is: 42')
+        'the answer is: 42',
+      )
     })
   })
 
@@ -295,13 +315,13 @@ describe('Nesting', () => {
         return error
       }
     })() as Error | undefined
-    expect(error).toBeInstanceOf(EsError)
-    expect(error?.message).toBe('a is not defined')
-    expect(error?.stack?.split('\n')[1]).toMatch(/<user input>: /)
+    assert.ok(error instanceof EsError)
+    assert.strictEqual(error?.message, 'a is not defined')
+    assert.match(error?.stack?.split('\n')[1] ?? '', /<user input>: /)
   })
 })
 
-describe('Reasons why not to run user input', () => {
+suite('Reasons why not to run user input', () => {
   // There are tons of ways how to break out of scope, but the one that most
   // certainly can't be caught or suppressed is the following:
   // * Access the constructor of a built-in function
@@ -318,14 +338,15 @@ describe('Reasons why not to run user input', () => {
     // global a will be set.
     es('(() => {(new ("".toString.constructor)("a=67"))()})()')
     // @ts-expect-error `a` was set at run-time by above code.
-    expect(a).toBe(67)
+    assert.strictEqual(a, 67)
   })
   test('access non-whitelisted APIs', () => {
     // JSON.stringify available although JSON is not whitelisted.
-    expect(
+    assert.strictEqual(
       es(
         '(() => (new ("".toString.constructor)("return JSON.stringify(67)"))())()',
       ),
-    ).toBe('67')
+      '67',
+    )
   })
 })

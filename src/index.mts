@@ -1,7 +1,7 @@
 import { STANDARD_ECMASCRIPT } from './standard-ecmascript.mjs'
 
 // Grab globalThis at start-up to minimize risk of it being something else.
-const _this = this
+const _this = this ?? globalThis ?? {}
 
 /**
  * Thrown by `es` when an error occurs in the user code.
