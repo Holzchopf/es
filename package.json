@@ -1,5 +1,5 @@
 {
-  "name": "es",
+  "name": "@holzchopf/es",
   "version": "1.0.0",
   "description": "ECMAScript eval, execute ECMAScript string",
   "main": "lib/cjs/index.cjs",
@@ -11,6 +11,9 @@
       "require": "./lib/cjs/index.cjs"
     }
   },
+  "files": [
+    "lib"
+  ],
   "scripts": {
     "build": "rm -r -f ./lib/** && node esbuild.mjs && tsc && npm pack",
     "test": "tsx --test",

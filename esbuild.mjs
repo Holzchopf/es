@@ -20,10 +20,12 @@ await Promise.all([
     ...shared,
     format: 'cjs',
     outdir: './lib/cjs',
+    outExtension: { '.js': '.cjs' },
   }),
   esbuild.build({
     ...shared,
     format: 'esm',
     outdir: './lib/esm',
+    outExtension: { '.js': '.mjs' },
   }),
 ])
